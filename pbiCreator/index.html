@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JIRA PBI Creator</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #f8f9fa; padding-top: 1rem; }
+        .card { box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .json-display { 
+            background-color: #2d2d2d; 
+            color: #50fa7b; 
+            padding: 15px; 
+            border-radius: 5px; 
+            font-family: 'Courier New', Courier, monospace; 
+            font-size: 0.8rem; 
+            max-height: 400px; 
+            overflow-y: auto; 
+            white-space: pre-wrap; 
+        }
+        .hidden { display: none; }
+        .history-item { cursor: pointer; max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    </style>
+</head>
+<body>
+
+<div class="container pb-5">
+    
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card border-warning">
+                <div class="card-body bg-light">
+                    <label for="apiUrlInput" class="form-label fw-bold">API Endpoint URL</label>
+                    <div class="input-group">
+                        <span class="input-group-text">POST</span>
+                        <input type="text" class="form-control" id="apiUrlInput" placeholder="https://your-api.com/v1/pbi-creator">
+                    </div>
+                    <div class="form-text">This URL is saved in your browser's session storage.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <h2 class="mb-4 text-center">AI PBI Creator for JIRA</h2>
+
+    <div class="row">
+        <div class="col-md-7">
+            
+            <div class="card mb-4">
+                <div class="card-header bg-primary text-white">Step 1: Describe the Issue</div>
+                <div class="card-body">
+                    
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <label for="initialInput" class="form-label mb-0 fw-bold">Description</label>
+                        
+                        <div class="dropdown">
+                            <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" id="historyDropdownBtn" data-bs-toggle="dropdown" aria-expanded="false">
+                                🕒 Recent Inputs
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-end" id="historyList" aria-labelledby="historyDropdownBtn">
+                                <li><span class="dropdown-item text-muted">No history yet...</span></li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <textarea class="form-control mb-3" id="initialInput" rows="3" placeholder="e.g., When the broker is down, the risk analysis creates a data loss..."></textarea>
+                    
+                    <button id="btnAnalyze" class="btn btn-primary w-100">Analyze & Generate Draft</button>
+                </div>
+            </div>
+
+            <div id="editorSection" class="card hidden">
+                <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
+                    <span>Step 2: Review & Edit Draft</span>
+                    <span id="badgeClassification" class="badge bg-dark"></span>
+                </div>
+                <div class="card-body">
+                    <form id="dynamicForm">
+                        </form>
+                    <hr>
+                    <button id="btnSubmit" class="btn btn-success w-100">Confirm & Create Ticket</button>
+                </div>
+            </div>
+
+        </div>
+
+        <div class="col-md-5">
+            <div class="card">
+                <div class="card-header bg-dark text-white">API Payload Viewer</div>
+                <div class="card-body">
+                    <p class="text-muted small">Debug view of JSON sent/received.</p>
+                    <label class="form-label fw-bold">Request Payload:</label>
+                    <div id="debugRequest" class="json-display mb-3">// Waiting...</div>
+                    <label class="form-label fw-bold">API Response:</label>
+                    <div id="debugResponse" class="json-display">// Waiting...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+<script>
+    // ==========================================
+    // 1. DOM ELEMENTS & CONSTANTS
+    // ==========================================
+    const STORAGE_KEY_URL = "jira_creator_api_url";
+    const STORAGE_KEY_HISTORY = "jira_creator_history";
+
+    const apiUrlInput = document.getElementById('apiUrlInput');
+    const initialInput = document.getElementById('initialInput');
+    const btnAnalyze = document.getElementById('btnAnalyze');
+    const btnSubmit = document.getElementById('btnSubmit');
+    const editorSection = document.getElementById('editorSection');
+    const dynamicForm = document.getElementById('dynamicForm');
+    const badgeClassification = document.getElementById('badgeClassification');
+    const historyList = document.getElementById('historyList');
+    
+    // Debug views
+    const debugRequest = document.getElementById('debugRequest');
+    const debugResponse = document.getElementById('debugResponse');
+
+    let currentClassification = "";
+
+    // ==========================================
+    // 2. INITIALIZATION (Load Storage)
+    // ==========================================
+    window.addEventListener('DOMContentLoaded', () => {
+        // A. Load URL from Session Storage
+        const savedUrl = sessionStorage.getItem(STORAGE_KEY_URL);
+        if (savedUrl) {
+            apiUrlInput.value = savedUrl;
+        } else {
+            // Default value if nothing saved
+            apiUrlInput.value = "http://localhost:3000/api/pbi";
+        }
+
+        // B. Load History from Local Storage (Persistent)
+        renderHistoryDropdown();
+    });
+
+    // Save URL whenever user types
+    apiUrlInput.addEventListener('input', () => {
+        sessionStorage.setItem(STORAGE_KEY_URL, apiUrlInput.value);
+    });
+
+    // ==========================================
+    // 3. HISTORY MANAGEMENT
+    // ==========================================
+    function getHistory() {
+        const stored = localStorage.getItem(STORAGE_KEY_HISTORY);
+        return stored ? JSON.parse(stored) : [];
+    }
+
+    function addToHistory(text) {
+        if (!text) return;
+        let history = getHistory();
+        
+        // Remove if exists (to move it to top)
+        history = history.filter(item => item !== text);
+        
+        // Add to front
+        history.unshift(text);
+
+        // Keep max 10 items
+        if (history.length > 10) history = history.slice(0, 10);
+
+        localStorage.setItem(STORAGE_KEY_HISTORY, JSON.stringify(history));
+        renderHistoryDropdown();
+    }
+
+    function renderHistoryDropdown() {
+        const history = getHistory();
+        historyList.innerHTML = '';
+
+        if (history.length === 0) {
+            historyList.innerHTML = '<li><span class="dropdown-item text-muted">No history yet...</span></li>';
+            return;
+        }
+
+        history.forEach(text => {
+            const li = document.createElement('li');
+            const a = document.createElement('a');
+            a.className = 'dropdown-item history-item';
+            // Truncate text for the menu
+            a.innerText = text.length > 50 ? text.substring(0, 50) + "..." : text;
+            a.title = text; // Show full text on hover
+            
+            // On Click: Populate Textarea
+            a.addEventListener('click', () => {
+                initialInput.value = text;
+            });
+
+            li.appendChild(a);
+            historyList.appendChild(li);
+        });
+        
+        // Add a "Clear History" option at bottom
+        const divider = document.createElement('li');
+        divider.innerHTML = '<hr class="dropdown-divider">';
+        historyList.appendChild(divider);
+
+        const clearLi = document.createElement('li');
+        clearLi.innerHTML = '<a class="dropdown-item text-danger small" href="#">Clear History</a>';
+        clearLi.addEventListener('click', (e) => {
+            e.preventDefault();
+            localStorage.removeItem(STORAGE_KEY_HISTORY);
+            renderHistoryDropdown();
+        });
+        historyList.appendChild(clearLi);
+    }
+
+    // ==========================================
+    // 4. API LOGIC
+    // ==========================================
+    async function sendToApi(payloadObject) {
+        const targetUrl = apiUrlInput.value.trim();
+        if (!targetUrl) {
+            alert("Please enter an API URL.");
+            throw new Error("Missing URL");
+        }
+        
+        // Ensure URL is saved one last time before send
+        sessionStorage.setItem(STORAGE_KEY_URL, targetUrl);
+
+        debugRequest.innerText = JSON.stringify(payloadObject, null, 2);
+        debugResponse.innerText = `Sending to: ${targetUrl} ...`;
+
+        try {
+            const response = await fetch(targetUrl, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payloadObject)
+            });
+
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            
+            const data = await response.json();
+            debugResponse.innerText = JSON.stringify(data, null, 2);
+            return data;
+
+        } catch (error) {
+            debugResponse.innerText = "Error: " + error.message;
+            alert("API Call Failed.");
+            throw error;
+        }
+    }
+
+    // ==========================================
+    // 5. STEP 1: ANALYZE
+    // ==========================================
+    btnAnalyze.addEventListener('click', async () => {
+        const description = initialInput.value;
+        if (!description) return alert("Please enter a description.");
+
+        // 1. Add to History immediately
+        addToHistory(description);
+
+        btnAnalyze.textContent = "Analyzing...";
+        btnAnalyze.disabled = true;
+
+        const payload = {
+            "body": description,
+            "accept": false
+        };
+
+        try {
+            const responseData = await sendToApi(payload);
+            
+            currentClassification = responseData.classification;
+            let parsedFields;
+            try {
+                parsedFields = JSON.parse(responseData.JSONCode);
+            } catch (e) {
+                parsedFields = responseData.JSONCode;
+            }
+
+            renderDynamicForm(currentClassification, parsedFields);
+            badgeClassification.innerText = currentClassification;
+            editorSection.classList.remove('hidden');
+
+        } catch (error) {
+            // Error logged in sendToApi
+        } finally {
+            btnAnalyze.textContent = "Analyze & Generate Draft";
+            btnAnalyze.disabled = false;
+        }
+    });
+
+    // ==========================================
+    // 6. STEP 2: CONFIRM
+    // ==========================================
+    btnSubmit.addEventListener('click', async () => {
+        const formData = new FormData(dynamicForm);
+        let finalJsonObj = {};
+        
+        formData.forEach((value, key) => {
+            finalJsonObj[key] = value;
+        });
+
+        if (currentClassification.toLowerCase().includes("story") && finalJsonObj.acceptance_criteria) {
+            finalJsonObj.acceptance_criteria = finalJsonObj.acceptance_criteria.split('\n').filter(l => l.trim() !== "");
+        }
+
+        const payload = {
+            "body": initialInput.value,
+            "accept": true,
+            "classification": currentClassification,
+            "JSONCode": JSON.stringify(finalJsonObj)
+        };
+
+        btnSubmit.textContent = "Creating...";
+        btnSubmit.disabled = true;
+
+        try {
+            await sendToApi(payload);
+            alert("Success! PBI Created.");
+        } catch (error) {
+            // Error logged
+        } finally {
+            btnSubmit.textContent = "Confirm & Create Ticket";
+            btnSubmit.disabled = false;
+        }
+    });
+
+    // ==========================================
+    // 7. FORM RENDERER
+    // ==========================================
+    function renderDynamicForm(classification, data) {
+        dynamicForm.innerHTML = ''; 
+
+        const createField = (key, label, value, type = 'text') => {
+            const div = document.createElement('div');
+            div.className = 'mb-3';
+            
+            const labelEl = document.createElement('label');
+            labelEl.className = 'form-label fw-bold text-capitalize';
+            labelEl.innerText = label.replace(/_/g, ' '); 
+            
+            let inputEl;
+            if (type === 'textarea') {
+                inputEl = document.createElement('textarea');
+                inputEl.rows = 4;
+                inputEl.innerText = value || "";
+            } else {
+                inputEl = document.createElement('input');
+                inputEl.value = value || "";
+            }
+            
+            inputEl.name = key;
+            inputEl.className = 'form-control';
+            
+            div.appendChild(labelEl);
+            div.appendChild(inputEl);
+            return div;
+        };
+
+        const type = classification.toLowerCase();
+
+        if (type.includes("bug")) {
+            dynamicForm.appendChild(createField("summary", "Summary", data.summary));
+            dynamicForm.appendChild(createField("description", "Description", data.description, "textarea"));
+            dynamicForm.appendChild(createField("module_or_screen", "Module / Screen", data.module_or_screen));
+            dynamicForm.appendChild(createField("steps_to_reproduce", "Steps to Reproduce", data.steps_to_reproduce, "textarea"));
+            dynamicForm.appendChild(createField("expected_behavior", "Expected Behavior", data.expected_behavior, "textarea"));
+        
+        } else if (type.includes("story") || type.includes("enhancement")) {
+            dynamicForm.appendChild(createField("summary", "Summary", data.summary));
+            dynamicForm.appendChild(createField("description", "Description", data.description, "textarea"));
+            dynamicForm.appendChild(createField("actor", "Actor", data.actor));
+            dynamicForm.appendChild(createField("use_case_goal", "Use Case Goal", data.use_case_goal));
+            
+            const criteriaText = Array.isArray(data.acceptance_criteria) 
+                ? data.acceptance_criteria.join('\n') 
+                : (data.acceptance_criteria || "");
+            
+            dynamicForm.appendChild(createField("acceptance_criteria", "Acceptance Criteria (One per line)", criteriaText, "textarea"));
+
+        } else if (type.includes("task")) {
+            dynamicForm.appendChild(createField("summary", "Summary", data.summary));
+            dynamicForm.appendChild(createField("description", "Description", data.description, "textarea"));
+            dynamicForm.appendChild(createField("outcome", "Outcome", data.outcome, "textarea"));
+            
+        } else {
+            dynamicForm.appendChild(createField("summary", "Summary", data.summary || ""));
+            dynamicForm.appendChild(createField("description", "Description", data.description || "", "textarea"));
+        }
+    }
+</script>
+
+</body>
+</html>

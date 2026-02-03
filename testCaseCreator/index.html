@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jira UAT Viewer</title>
+    <style>
+        :root {
+            --jira-blue: #0052CC;
+            --bg-gray: #f4f5f7;
+            --text-dark: #172b4d;
+            --border-color: #dfe1e6;
+            --success-green: #36b37e;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: var(--bg-gray);
+            color: var(--text-dark);
+            display: flex;
+            justify-content: center;
+            padding: 40px 20px;
+        }
+
+        /* Search & Config Screens */
+        #search-container, #config-container {
+            text-align: center;
+            background: white;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 450px;
+        }
+
+        #config-container { display: none; }
+
+        .input-group { margin: 20px 0; text-align: left; }
+        label { font-size: 0.8rem; font-weight: bold; color: #6b778c; display: block; margin-bottom: 5px; }
+        
+        input[type="text"], input[type="url"] {
+            width: 100%;
+            padding: 14px;
+            border: 2px solid var(--border-color);
+            border-radius: 6px;
+            font-size: 1rem;
+            outline: none;
+            transition: border-color 0.2s;
+            box-sizing: border-box;
+        }
+
+        input[type="text"]:focus, input[type="url"]:focus { border-color: var(--jira-blue); }
+
+        button {
+            background: var(--jira-blue);
+            color: white;
+            border: none;
+            padding: 14px 28px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            width: 100%;
+            font-size: 1rem;
+            margin-top: 10px;
+        }
+
+        button:hover { background: #0040a3; }
+        button:disabled { background: #a5adba; cursor: not-allowed; }
+
+        .secondary-btn { background: #ebecf0; color: #42526e; margin-top: 15px; }
+        .secondary-btn:hover { background: #dfe1e6; }
+
+        /* Results Screen */
+        #result-container {
+            display: none;
+            max-width: 1000px;
+            width: 100%;
+            background: white;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.1);
+        }
+
+        header { border-bottom: 3px solid var(--jira-blue); margin-bottom: 30px; padding-bottom: 15px; }
+        .issue-summary { font-size: 1.8rem; margin: 0 0 10px 0; color: #0747A6; }
+
+        .meta-grid { 
+            display: grid; 
+            grid-template-columns: repeat(4, 1fr); 
+            gap: 25px; 
+            margin-bottom: 40px; 
+        }
+
+        .section-title { font-size: 0.75rem; text-transform: uppercase; color: #6b778c; margin-bottom: 8px; font-weight: 800; letter-spacing: 0.5px; }
+        .data-content { font-size: 1rem; font-weight: 500; }
+        
+        .req-item { 
+            background: #e3f2fd; 
+            color: #0052cc; 
+            padding: 6px 12px; 
+            border-radius: 20px; 
+            font-size: 0.85rem; 
+            display: inline-block; 
+            margin-bottom: 8px;
+            margin-right: 5px;
+            border: 1px solid #bbdefb;
+        }
+
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; border: 1px solid var(--border-color); }
+        th, td { text-align: left; padding: 16px; border-bottom: 1px solid var(--border-color); }
+        th { background-color: #f4f5f7; font-size: 0.8rem; text-transform: uppercase; color: #5e6c84; }
+        .step-num { width: 50px; font-weight: bold; color: var(--jira-blue); text-align: center; }
+
+        .back-btn { background: #f4f5f7; color: #42526e; width: auto; padding: 8px 16px; margin-bottom: 20px; font-size: 0.85rem; }
+
+        .loader { border: 4px solid #f3f3f3; border-top: 4px solid var(--jira-blue); border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; display: none; margin: 20px auto; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+
+    <div id="config-container">
+        <h2 style="margin:0">API Settings</h2>
+        <p style="color:#6b778c">Paste your Power Automate Trigger URL</p>
+        <div class="input-group">
+            <label for="apiUrlInput">Power Automate URL</label>
+            <input type="url" id="apiUrlInput" placeholder="https://...">
+            <small style="color: #6b778c; font-size: 0.7rem;">Use {issueKey} as a placeholder in the URL path.</small>
+        </div>
+        <button onclick="saveConfig()">Save & Continue</button>
+    </div>
+
+    <div id="search-container">
+        <h2 style="margin:0">UAT Dashboard</h2>
+        <p style="color:#6b778c">Enter Jira Issue Key</p>
+        <div class="input-group">
+            <input type="text" id="issueInput" placeholder="e.g. CPM-6759">
+        </div>
+        <button id="fetchBtn" onclick="fetchIssue()">Fetch Test Details</button>
+        <button class="secondary-btn" onclick="showConfig()">Update API URL</button>
+        
+        <div id="loader" class="loader"></div>
+        <p id="errorMsg" style="color:#de350b; font-size:0.9rem; display:none; margin-top:15px;"></p>
+    </div>
+
+    <div id="result-container">
+        <button class="back-btn" onclick="resetSearch()">← New Search</button>
+        <header>
+            <div class="section-title" id="issue-key-label"></div>
+            <h1 class="issue-summary" id="issue_summary"></h1>
+            <a id="issue_url" href="#" target="_blank" style="color:var(--jira-blue); text-decoration:none; font-size: 0.9rem;">View in Jira Marketplace →</a>
+        </header>
+
+        <div class="meta-grid">
+            <div style="grid-column: span 2;">
+                <div class="section-title">Test Case Name</div>
+                <div class="data-content" id="test_case_name"></div>
+            </div>
+            <div style="grid-column: span 2;">
+                <div class="section-title">Test Purpose</div>
+                <div class="data-content" id="test_purpose"></div>
+            </div>
+            <div style="grid-column: span 4;">
+                <div class="section-title">Requirements Covered</div>
+                <div id="requirements_covered"></div>
+            </div>
+            <div style="grid-column: span 4;">
+                <div class="section-title">Input Test Data</div>
+                <div class="data-content" id="input_test_data" style="background: #fdfdfd; padding: 10px; border: 1px dashed var(--border-color);"></div>
+            </div>
+        </div>
+
+        <section>
+            <div class="section-title">Execution Steps</div>
+            <table>
+                <thead>
+                    <tr>
+                        <th class="step-num">Step</th>
+                        <th>Action / Expected Result</th>
+                    </tr>
+                </thead>
+                <tbody id="steps-body"></tbody>
+            </table>
+        </section>
+    </div>
+
+<script>
+    // Initial Load Logic
+    window.onload = function() {
+        const savedUrl = sessionStorage.getItem('powerAutomateUrl');
+        if (!savedUrl) {
+            showConfig();
+        } else {
+            document.getElementById('apiUrlInput').value = savedUrl;
+        }
+    };
+
+    function showConfig() {
+        document.getElementById('search-container').style.display = 'none';
+        document.getElementById('config-container').style.display = 'block';
+    }
+
+    function saveConfig() {
+        const url = document.getElementById('apiUrlInput').value.trim();
+        if (url) {
+            sessionStorage.setItem('powerAutomateUrl', url);
+            document.getElementById('config-container').style.display = 'none';
+            document.getElementById('search-container').style.display = 'block';
+        } else {
+            alert("Please enter a valid URL.");
+        }
+    }
+
+    async function fetchIssue() {
+        const issueKey = document.getElementById('issueInput').value.trim();
+        const flowUrl = sessionStorage.getItem('powerAutomateUrl');
+
+        if (!issueKey) return;
+        if (!flowUrl) {
+            alert("API URL not configured.");
+            showConfig();
+            return;
+        }
+
+        toggleLoading(true);
+
+        try {
+            // Replaces {issueKey} placeholder if present, otherwise appends it (depending on how you set up your flow)
+            const finalUrl = flowUrl.includes("{issueKey}") 
+                ? flowUrl.replace("{issueKey}", issueKey) 
+                : flowUrl;
+
+            const response = await fetch(finalUrl, {
+                method: 'GET',
+                headers: { 'Content-Type': 'application/json' }
+            });
+
+            if (!response.ok) throw new Error("Server returned error: " + response.status);
+            
+            const data = await response.json();
+            renderData(data, issueKey);
+        } catch (error) {
+            const errorP = document.getElementById('errorMsg');
+            errorP.innerText = error.message.includes("fetch") ? "Connection error. Check the API URL." : error.message;
+            errorP.style.display = 'block';
+        } finally {
+            toggleLoading(false);
+        }
+    }
+
+    function renderData(data, key) {
+        document.getElementById('search-container').style.display = 'none';
+        document.getElementById('result-container').style.display = 'block';
+
+        document.getElementById('issue-key-label').innerText = key;
+        document.getElementById('issue_summary').innerText = data.issue_summary || "No Summary";
+        document.getElementById('issue_url').href = data.issue_url || "#";
+        document.getElementById('test_case_name').innerText = data.test_case_name || "N/A";
+        document.getElementById('test_purpose').innerText = data.test_purpose || "N/A";
+        document.getElementById('input_test_data').innerText = data.input_test_data || "N/A";
+
+        const reqDiv = document.getElementById('requirements_covered');
+        reqDiv.innerHTML = (data.requirements_covered || []).map(req => 
+            `<span class="req-item">${req.item}</span>`
+        ).join('');
+
+        const tbody = document.getElementById('steps-body');
+        tbody.innerHTML = (data.test_steps || []).map((stepObj, i) => `
+            <tr>
+                <td class="step-num">${i + 1}</td>
+                <td class="data-content">${stepObj.item}</td>
+            </tr>
+        `).join('');
+    }
+
+    function toggleLoading(isLoading) {
+        document.getElementById('fetchBtn').disabled = isLoading;
+        document.getElementById('loader').style.display = isLoading ? 'block' : 'none';
+        document.getElementById('errorMsg').style.display = 'none';
+    }
+
+    function resetSearch() {
+        document.getElementById('search-container').style.display = 'block';
+        document.getElementById('result-container').style.display = 'none';
+        document.getElementById('issueInput').value = '';
+    }
+</script>
+</body>
+</html>
