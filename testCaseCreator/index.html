@@ -187,7 +187,7 @@
 <script>
     // Initial Load Logic
     window.onload = function() {
-        const savedUrl = sessionStorage.getItem('powerAutomateUrl');
+        const savedUrl = localStorage.getItem('powerAutomateUrl');
         if (!savedUrl) {
             showConfig();
         } else {
@@ -203,7 +203,7 @@
     function saveConfig() {
         const url = document.getElementById('apiUrlInput').value.trim();
         if (url) {
-            sessionStorage.setItem('powerAutomateUrl', url);
+            localStorage.setItem('powerAutomateUrl', url);
             document.getElementById('config-container').style.display = 'none';
             document.getElementById('search-container').style.display = 'block';
         } else {
@@ -213,7 +213,7 @@
 
     async function fetchIssue() {
         const issueKey = document.getElementById('issueInput').value.trim();
-        const flowUrl = sessionStorage.getItem('powerAutomateUrl');
+        const flowUrl = localStorage.getItem('powerAutomateUrl');
 
         if (!issueKey) return;
         if (!flowUrl) {

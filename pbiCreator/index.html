@@ -128,8 +128,8 @@
     // 2. INITIALIZATION (Load Storage)
     // ==========================================
     window.addEventListener('DOMContentLoaded', () => {
-        // A. Load URL from Session Storage
-        const savedUrl = sessionStorage.getItem(STORAGE_KEY_URL);
+        // A. Load URL from Local Storage
+        const savedUrl = localStorage.getItem(STORAGE_KEY_URL);
         if (savedUrl) {
             apiUrlInput.value = savedUrl;
         } else {
@@ -143,7 +143,7 @@
 
     // Save URL whenever user types
     apiUrlInput.addEventListener('input', () => {
-        sessionStorage.setItem(STORAGE_KEY_URL, apiUrlInput.value);
+        localStorage.setItem(STORAGE_KEY_URL, apiUrlInput.value);
     });
 
     // ==========================================
@@ -223,7 +223,7 @@
         }
         
         // Ensure URL is saved one last time before send
-        sessionStorage.setItem(STORAGE_KEY_URL, targetUrl);
+        localStorage.setItem(STORAGE_KEY_URL, targetUrl);
 
         debugRequest.innerText = JSON.stringify(payloadObject, null, 2);
         debugResponse.innerText = `Sending to: ${targetUrl} ...`;
