@@ -238,7 +238,12 @@
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             
             const data = await response.json();
-            debugResponse.innerText = JSON.stringify(data, null, 2);
+            if (data.includes("Id of issue created") {
+                debugResponse.innerText = data;
+            }
+            else {
+                debugResponse.innerText = JSON.stringify(data, null, 2);
+            }
             return data;
 
         } catch (error) {
