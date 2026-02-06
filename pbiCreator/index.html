@@ -237,7 +237,7 @@
 
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
-            const result = await response.text();
+            const rawText = await response.text();
             let data;
 
             try {
