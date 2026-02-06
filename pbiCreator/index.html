@@ -238,7 +238,7 @@
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             
             const data = await response.json();
-            if (data.includes("Id of issue created") {
+            if (data.includes("Id of issue created")) {
                 debugResponse.innerText = data;
             }
             else {
