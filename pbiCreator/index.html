@@ -237,13 +237,28 @@
 
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
-            const result = await response;
-            if (result.includes("Id of issue created")) {
-                debugResponse.innerText = data;
-            }
-            else {
-                const data = response.json();
+            const result = await response.text();
+            let data;
+
+            try {
+                // 2. Try to parse it as JSON
+                data = JSON.parse(rawText);
+                
+                // If it's valid JSON, render your UAT details
+                renderData(data, issueKey);
+                
+                // Debugging: Show formatted JSON
                 debugResponse.innerText = JSON.stringify(data, null, 2);
+                
+            } catch (e) {
+                // 3. If JSON.parse fails, it's likely a plain string (like the ID)
+                if (rawText.includes("Id of issue created")) {
+                    debugResponse.innerText = rawText;
+                    // You might want to handle what happens in the UI here 
+                    // since the UAT table won't have data to show.
+                } else {
+                    debugResponse.innerText = "Received non-JSON response: " + rawText;
+                }
             }
             return data;
 
